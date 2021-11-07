@@ -20,6 +20,18 @@ GLShaderManager shaderManager;
 //简单的批次容器，是GLTools的一个简单的容器类。
 GLBatch triangleBatch;
 
+//边长/2
+GLfloat blockSize = 0.1f;
+GLfloat vVerts[] = {
+    -blockSize, -blockSize, 0.0f,
+    blockSize, -blockSize, 0.0f,
+    blockSize, blockSize, 0.0f,
+    -blockSize, blockSize, 0.0f
+};
+
+GLfloat xPos = 0.0f;
+GLfloat yPos = 0.0f;
+
 /*
  在窗口大小改变时，接收新的宽度&高度。
  */
@@ -32,10 +44,11 @@ void changeSize(int w, int h)
 
 }
 
+//渲染，GPU真正执行的地方
 void RenderScene(void)
 {
 
-    //1.清除一个或者一组特定的缓存区
+    //1.执行清空颜色缓存区，使用的是glClearColor设置的颜色缓存区，清除一个或者一组特定的缓存区
     /*
      缓冲区是一块存在图像信息的储存空间，红色、绿色、蓝色和alpha分量通常一起分量通常一起作为颜色缓存区或像素缓存区引用。
      OpenGL 中不止一种缓冲区（颜色缓存区、深度缓存区和模板缓存区）
@@ -48,11 +61,29 @@ void RenderScene(void)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 
-    //2.设置一组浮点数来表示红色
-    GLfloat vRed[] = { 1.0,0.0,0.0,1.0f };
+    //2.设置一组浮点数来表示绿色
+    GLfloat vGreen[] = { 0.0,1.0,0.0,1.0f };
 
-    //传递到存储着色器，即GLT_SHADER_IDENTITY着色器，这个着色器只是使用指定颜色以默认笛卡尔坐标第在屏幕上渲染几何图形
-    shaderManager.UseStockShader(GLT_SHADER_IDENTITY, vRed);
+    //传递到存储着色器，即GLT_SHADER_IDENTITY着色器（单元着色器），这个着色器只是使用指定颜色以默认笛卡尔坐标第在屏幕上渲染几何图形
+    //shaderManager.UseStockShader(GLT_SHADER_IDENTITY, vGreen);
+    
+    // x y z w(缩放因子1.0)
+    M3DMatrix44f mTransformMatrix, mFinalTransform, mRotationMatix;
+    
+    //平移
+    m3dTranslationMatrix44(mTransformMatrix,xPos, yPos, 0.0f );
+
+    static float ZRot = 0.0f;
+    
+
+    m3dRotationMatrix44(mRotationMatix, m3dDegToRad(ZRot), 0.0f, 0.0f, 1.0f);
+
+    //矩阵相乘
+    m3dMatrixMultiply44(mFinalTransform, mTransformMatrix, mRotationMatix);
+    ZRot += 5.0f;
+
+    //平面着色器
+    shaderManager.UseStockShader(GLT_SHADER_FLAT, mFinalTransform, vGreen);
 
     //提交着色器
     triangleBatch.Draw();
@@ -63,9 +94,110 @@ void RenderScene(void)
 
 }
 
+void SpeacialKeys(int key, int x, int y)
+{
+    //移动正方形，方法二
+    GLfloat stepSize = 0.025f;
+    if (key == GLUT_KEY_UP) {
+        yPos += stepSize;
+    }
+
+    if (key == GLUT_KEY_DOWN) {
+        yPos -= stepSize;
+    }
+
+    if (key == GLUT_KEY_LEFT) {
+        xPos -= stepSize;
+    }
+
+    if (key == GLUT_KEY_RIGHT) {
+        xPos += stepSize;
+    }
+
+    //边界检测
+    if (xPos < -1.0f + blockSize)
+        xPos = -1.0f + blockSize;
+
+    if (xPos > 1.0f - blockSize)
+        xPos = 1.0f - blockSize;
+
+    if (yPos < -1.0f + blockSize)
+        yPos = -1.0f + blockSize;
+
+    if (yPos > 1.0f - blockSize)
+        yPos = 1.0f - blockSize;
+
+    //执行下面语句后，glutDisplayFunc(RenderScene);这个回调将会被调用，即执行渲染动作
+    glutPostRedisplay();
+
+#if 0
+    //移动正方形，方法一
+    GLfloat stepSize = 0.025f;
+    //D点
+    GLfloat blockX = vVerts[9];
+    GLfloat blockY = vVerts[10];
+
+    if (key == GLUT_KEY_UP) {
+        blockY += stepSize;
+    }
+
+    if (key == GLUT_KEY_DOWN) {
+        blockY -= stepSize;
+    }
+
+    if (key == GLUT_KEY_LEFT) {
+        blockX -= stepSize;
+    }
+
+    if (key == GLUT_KEY_RIGHT) {
+        blockX += stepSize;
+    }
+
+    //超出边界判断
+    if (blockX < -1.0f) {
+        blockX = -1.0f;
+    }
+
+    if (blockX > 1.0f - blockSize * 2) {
+        blockX = 1.0f - blockSize * 2;
+    }
+
+    if (blockY > 1.0f) {
+        blockY = 1.0f;
+    }
+
+    if (blockY < -1.0f + blockSize * 2) {
+        blockY = -1.0f + blockSize * 2;
+    }
+
+    //更新其他的定点位置
+    // A点
+    vVerts[0] = blockX;
+    vVerts[1] = blockY - blockSize * 2;
+
+    // B点
+    vVerts[3] = blockX + blockSize * 2;
+    vVerts[4] = blockY - blockSize * 2;
+
+    // C点
+    vVerts[6] = blockX + blockSize * 2;
+    vVerts[7] = blockY;
+
+    // D点
+    vVerts[9] = blockX;
+    vVerts[10] = blockY;
+
+    triangleBatch.CopyVertexData3f(vVerts);
+
+    //执行下面语句后，glutDisplayFunc(RenderScene);这个回调将会被调用，即执行渲染动作
+    glutPostRedisplay();
+#endif
+}
+
+//顶点设置
 void setupRC()
 {
-    //设置清屏颜色（背景颜色）
+    //设置清屏颜色（背景颜色），把颜色设置到颜色缓存区，没有真正执行
     glClearColor(0.98f, 0.40f, 0.7f, 1);
 
 
@@ -74,16 +206,20 @@ void setupRC()
     shaderManager.InitializeStockShaders();
 
 
-    //指定顶点
-    //在OpenGL中，三角形是一种基本的3D图元绘图原素。
-    GLfloat vVerts[] = {
-        -0.5f,0.0f,0.0f,
-        0.5f,0.0f,0.0f,
-        0.0f,0.5f,0.0f
-    };
+    ////指定顶点 x y z
+    ////在OpenGL中，三角形是一种基本的3D图元绘图原素。
+    //GLfloat vVerts[] = {
+    //    -0.5f,0.0f,0.0f,
+    //    0.5f,0.0f,0.0f,
+    //    0.5f,0.5f,0.0f,
+    //    -0.5f,0.5f,0.0f
+    //};
 
-    triangleBatch.Begin(GL_TRIANGLES, 3);
+    //用不同的模式来绘图 primitive:三角形模式    nVerts:顶点个数
+    triangleBatch.Begin(GL_POLYGON, 4);
+    //把三角形的定点拷贝进去
     triangleBatch.CopyVertexData3f(vVerts);
+    //结束
     triangleBatch.End();
 
 }
@@ -125,6 +261,7 @@ int main(int argc, char* argv[])
     //注册显示函数
     glutDisplayFunc(RenderScene);
 
+    glutSpecialFunc(SpeacialKeys);
     /*
      初始化一个GLEW库,确保OpenGL API对程序完全可用。
      在试图做任何渲染之前，要检查确定驱动程序的初始化过程中没有任何问题
